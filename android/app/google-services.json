@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "1088141472431",
+    "firebase_url": "https://invfnl-default-rtdb.firebaseio.com",
+    "project_id": "invfnl",
+    "storage_bucket": "invfnl.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1088141472431:android:3d512bcf538dfcce4fda5a",
+        "android_client_info": {
+          "package_name": "com.example.sistema_riego_invernadero"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCB7fZ-yX7iah6aTI7mVtV_u8Wjchr34Hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1088141472431:android:2667de9d2ed173224fda5a",
+        "android_client_info": {
+          "package_name": "com.insoftech.sistemaRiego"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCB7fZ-yX7iah6aTI7mVtV_u8Wjchr34Hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
