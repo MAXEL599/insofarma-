@@ -66,7 +66,7 @@ class MyApp extends StatelessWidget {
         '/historial': (context) => const HistorialPage(),
         '/ajustes': (context) => const AjustesPage(),
         '/manuales': (context) => const ManualesPage(),
-        '/configuracion_arduino': (context) => const ConfiguracionWifiPage(),
+        '/configuracion_arduino': (context) => ConfiguracionArduinoPage(),
         '/registro': (context) => const RegistroPage(),
         '/tabla_sensores': (context) => const TablaSensoresPage(),
       },
