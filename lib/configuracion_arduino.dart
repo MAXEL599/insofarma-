@@ -66,7 +66,7 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
     final db = FirebaseDatabase.instance.ref();
     final snapshot = await db.child('plantas').once();
     final data = snapshot.snapshot.value;
-    if (data != null && data is Map) {
+    if (data != null && data is Map && mounted) {
       setState(() {
         _plantasDisponibles = [...data.keys.cast<String>(), 'Agregar nueva...'];
       });
@@ -84,7 +84,7 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
     final ssid = prefs.getString('wifi_ssid');
     final password = prefs.getString('wifi_password');
 
-    if (ssid != null && password != null) {
+    if (ssid != null && password != null && mounted) {
       ssidController.text = ssid;
       passwordController.text = password;
       setState(() {
@@ -102,24 +102,28 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final conectado = jsonDecode(response.body)['conectado'] ?? false;
-        setState(() {
-          _estadoConexion = conectado ? "🟢 Conectado" : "🔴 Desconectado";
-          _colorEstado = conectado ? Colors.green : Colors.red;
-          _arduinoConectado = conectado;
-          _configuracionHabilitada = conectado;
-          _editable = conectado;
-        });
+        if (mounted) {
+          setState(() {
+            _estadoConexion = conectado ? "🟢 Conectado" : "🔴 Desconectado";
+            _colorEstado = conectado ? Colors.green : Colors.red;
+            _arduinoConectado = conectado;
+            _configuracionHabilitada = conectado;
+            _editable = conectado;
+          });
+        }
       } else {
         throw Exception("Código inesperado: \${response.statusCode}");
       }
     } catch (_) {
-      setState(() {
-        _estadoConexion = "🔴 Desconectado";
-        _colorEstado = Colors.red;
-        _arduinoConectado = false;
-        _configuracionHabilitada = false;
-        _editable = false;
-      });
+      if (mounted) {
+        setState(() {
+          _estadoConexion = "🔴 Desconectado";
+          _colorEstado = Colors.red;
+          _arduinoConectado = false;
+          _configuracionHabilitada = false;
+          _editable = false;
+        });
+      }
     }
   }
 
