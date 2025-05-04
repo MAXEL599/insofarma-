@@ -69,6 +69,7 @@ class MyApp extends StatelessWidget {
         '/configuracion_arduino': (context) => ConfiguracionArduinoPage(),
         '/registro': (context) => const RegistroPage(),
         '/tabla_sensores': (context) => const TablaSensoresPage(),
+        // '/plantasnew': (context) => const PlantasNewPage(),
       },
     );
   }
