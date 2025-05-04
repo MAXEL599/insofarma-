@@ -6,6 +6,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class ConfiguracionArduinoPage extends StatefulWidget {
   @override
@@ -27,19 +29,21 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
     (_) => TextEditingController(),
   );
   final List<List<TimeOfDay>> horarios = List.generate(4, (_) => []);
+  final List<String?> _plantasPorMaceta = List.filled(4, null);
 
   final FlutterLocalNotificationsPlugin _notifier =
       FlutterLocalNotificationsPlugin();
 
   bool _arduinoConectado = false;
   bool _configuracionHabilitada = false;
+  bool _editable = false;
   String _estadoConexion = "Desconectado";
   Color _colorEstado = Colors.red;
   bool _modoManual = false;
   bool _modoInteligente = false;
 
   String? _plantaSeleccionada;
-  final List<String> _plantasDisponibles = [
+  List<String> _plantasDisponibles = [
     'Fresa',
     'Lechuga',
     'Tomate',
@@ -53,7 +57,41 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
   @override
   void initState() {
     super.initState();
+    _cargarPlantasFirebase();
+    _cargarWifiGuardado();
     _verificarConexion();
+  }
+
+  Future<void> _cargarPlantasFirebase() async {
+    final db = FirebaseDatabase.instance.ref();
+    final snapshot = await db.child('plantas').once();
+    final data = snapshot.snapshot.value;
+    if (data != null && data is Map) {
+      setState(() {
+        _plantasDisponibles = [...data.keys.cast<String>(), 'Agregar nueva...'];
+      });
+    }
+  }
+
+  Future<void> _guardarWifiLocal(String ssid, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('wifi_ssid', ssid);
+    await prefs.setString('wifi_password', password);
+  }
+
+  Future<void> _cargarWifiGuardado() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ssid = prefs.getString('wifi_ssid');
+    final password = prefs.getString('wifi_password');
+
+    if (ssid != null && password != null) {
+      ssidController.text = ssid;
+      passwordController.text = password;
+      setState(() {
+        _configuracionHabilitada = true;
+        _editable = true;
+      });
+    }
   }
 
   Future<void> _verificarConexion() async {
@@ -69,9 +107,10 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
           _colorEstado = conectado ? Colors.green : Colors.red;
           _arduinoConectado = conectado;
           _configuracionHabilitada = conectado;
+          _editable = conectado;
         });
       } else {
-        throw Exception("Código inesperado: ${response.statusCode}");
+        throw Exception("Código inesperado: \${response.statusCode}");
       }
     } catch (_) {
       setState(() {
@@ -79,6 +118,7 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
         _colorEstado = Colors.red;
         _arduinoConectado = false;
         _configuracionHabilitada = false;
+        _editable = false;
       });
     }
   }
@@ -88,13 +128,14 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: Text("Conexión WiFi del Arduino"),
+            title: const Text("Conexión WiFi del Arduino"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: ssidController,
-                  decoration: InputDecoration(
+                  onChanged: (_) => setState(() => _editable = false),
+                  decoration: const InputDecoration(
                     labelText: 'Nombre de la red WiFi (SSID)',
                     prefixIcon: Icon(Icons.wifi),
                     border: OutlineInputBorder(),
@@ -104,7 +145,8 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
                 TextField(
                   controller: passwordController,
                   obscureText: true,
-                  decoration: InputDecoration(
+                  onChanged: (_) => setState(() => _editable = false),
+                  decoration: const InputDecoration(
                     labelText: 'Contraseña WiFi',
                     prefixIcon: Icon(Icons.lock),
                     border: OutlineInputBorder(),
@@ -115,18 +157,41 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text("Cerrar"),
+                child: const Text("Cerrar"),
               ),
             ],
           ),
     );
   }
 
+  void _guardarConfiguracionEnFirebase() async {
+    final db = FirebaseDatabase.instance.ref();
+    final now = DateTime.now().toLocal().toString();
+    final horariosFlat =
+        horarios.expand((e) => e).map((h) => h.format(context)).toList();
+
+    await db.child('configuraciones').push().set({
+      'fecha': now,
+      'ssid': ssidController.text,
+      'password': passwordController.text,
+      'plantasSeleccionadas': _plantasPorMaceta,
+      'humedadMinDHT': int.tryParse(humedadMinDHT.text) ?? 0,
+      'humedadMaxDHT': int.tryParse(humedadMaxDHT.text) ?? 0,
+      'humedadesMacetas': List.generate(
+        4,
+        (i) => int.tryParse(humedadSueloMin[i].text) ?? 0,
+      ),
+      'modoManual': _modoManual,
+      'modoEntrePeriodos': _modoInteligente,
+      'horarios': horariosFlat,
+    });
+  }
+
   Widget _buildMacetaFields(int index) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Maceta \${index + 1}"),
+        Text("Maceta ${index + 1}"),
         TextField(
           controller: humedadSueloMin[index],
           decoration: InputDecoration(
