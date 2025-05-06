@@ -57,6 +57,10 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
   @override
   void initState() {
     super.initState();
+    final settings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+    _notifier.initialize(settings);
     _cargarPlantasFirebase();
     _cargarWifiGuardado();
     _verificarConexion();
@@ -83,7 +87,6 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
     final prefs = await SharedPreferences.getInstance();
     final ssid = prefs.getString('wifi_ssid');
     final password = prefs.getString('wifi_password');
-
     if (ssid != null && password != null && mounted) {
       ssidController.text = ssid;
       passwordController.text = password;
@@ -95,24 +98,35 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
   }
 
   Future<void> _verificarConexion() async {
-    final url = Uri.parse(
-      'http://154.12.246.223:8059/api/arduino/heartbeat/status',
-    );
+    final url = Uri.parse('http://154.12.246.223:8059/api/arduino/status');
     try {
       final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final conectado = jsonDecode(response.body)['conectado'] ?? false;
-        if (mounted) {
-          setState(() {
-            _estadoConexion = conectado ? "🟢 Conectado" : "🔴 Desconectado";
-            _colorEstado = conectado ? Colors.green : Colors.red;
-            _arduinoConectado = conectado;
-            _configuracionHabilitada = conectado;
-            _editable = conectado;
-          });
+      final conectado = response.body.toLowerCase().contains("conectado");
+
+      if (mounted) {
+        setState(() {
+          _estadoConexion = conectado ? "🟢 Conectado" : "🔴 Desconectado";
+          _colorEstado = conectado ? Colors.green : Colors.red;
+          _arduinoConectado = conectado;
+          _configuracionHabilitada = conectado;
+          _editable = conectado;
+        });
+
+        if (!conectado) {
+          _notifier.show(
+            0,
+            'Modo AP activado',
+            'El Arduino está en modo configuración. Conéctate a Invernadero-Config.',
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                'modo_ap',
+                'Modo AP',
+                importance: Importance.high,
+                priority: Priority.high,
+              ),
+            ),
+          );
         }
-      } else {
-        throw Exception("Código inesperado: \${response.statusCode}");
       }
     } catch (_) {
       if (mounted) {
@@ -123,6 +137,19 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
           _configuracionHabilitada = false;
           _editable = false;
         });
+        await _notifier.show(
+          0,
+          'Error de conexión',
+          'No se pudo verificar la conexión con el Arduino.',
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              'conexion_error',
+              'Error de Conexión',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+        );
       }
     }
   }
@@ -168,92 +195,8 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
     );
   }
 
-  void _guardarConfiguracionEnFirebase() async {
-    final db = FirebaseDatabase.instance.ref();
-    final now = DateTime.now().toLocal().toString();
-    final horariosFlat =
-        horarios.expand((e) => e).map((h) => h.format(context)).toList();
-
-    await db.child('configuraciones').push().set({
-      'fecha': now,
-      'ssid': ssidController.text,
-      'password': passwordController.text,
-      'plantasSeleccionadas': _plantasPorMaceta,
-      'humedadMinDHT': int.tryParse(humedadMinDHT.text) ?? 0,
-      'humedadMaxDHT': int.tryParse(humedadMaxDHT.text) ?? 0,
-      'humedadesMacetas': List.generate(
-        4,
-        (i) => int.tryParse(humedadSueloMin[i].text) ?? 0,
-      ),
-      'modoManual': _modoManual,
-      'modoEntrePeriodos': _modoInteligente,
-      'horarios': horariosFlat,
-    });
-  }
-
   Widget _buildMacetaFields(int index) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text("Maceta ${index + 1}"),
-        TextField(
-          controller: humedadSueloMin[index],
-          decoration: InputDecoration(
-            labelText: 'Humedad suelo mínima',
-            prefixIcon: Icon(Icons.water_drop_outlined),
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: humedadSueloMax[index],
-          decoration: InputDecoration(
-            labelText: 'Humedad suelo máxima',
-            prefixIcon: Icon(Icons.opacity),
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        ...horarios[index].map((h) => Text("Horario: ${h.format(context)}")),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final picked = await showTimePicker(
-              context: context,
-              initialTime: TimeOfDay.now(),
-            );
-            if (picked != null) {
-              setState(() {
-                horarios[index].add(picked);
-              });
-            }
-          },
-          icon: Icon(Icons.access_time),
-          label: Text("Agregar horario"),
-        ),
-        if (_modoManual) ...[
-          CheckboxListTile(
-            value: _macetasSeleccionManual[index],
-            onChanged:
-                (val) => setState(
-                  () => _macetasSeleccionManual[index] = val ?? false,
-                ),
-            title: Text("Seleccionar para riego manual"),
-          ),
-          if (_macetasSeleccionManual[index])
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _macetasRegando[index] = !_macetasRegando[index];
-                });
-              },
-              child: Text(
-                _macetasRegando[index] ? "Detener riego" : "Iniciar riego",
-              ),
-            ),
-        ],
-        Divider(),
-      ],
-    );
+    return Container();
   }
 
   @override
