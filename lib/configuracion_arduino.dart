@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:awesome_dialog/awesome_dialog.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:crypto/crypto.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_database/firebase_database.dart';
 
@@ -16,43 +13,24 @@ class ConfiguracionArduinoPage extends StatefulWidget {
 }
 
 class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
-  final TextEditingController ssidController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-  final TextEditingController humedadMinDHT = TextEditingController();
-  final TextEditingController humedadMaxDHT = TextEditingController();
-  final List<TextEditingController> humedadSueloMin = List.generate(
+  final FlutterLocalNotificationsPlugin _notifier =
+      FlutterLocalNotificationsPlugin();
+  bool _arduinoDetectado = false;
+  String _estadoConexion = "Desconectado";
+  Color _colorEstado = Colors.red;
+
+  final List<TextEditingController> humedadMinSuelo = List.generate(
     4,
     (_) => TextEditingController(),
   );
-  final List<TextEditingController> humedadSueloMax = List.generate(
+  final List<TextEditingController> humedadMaxSuelo = List.generate(
     4,
     (_) => TextEditingController(),
   );
   final List<List<TimeOfDay>> horarios = List.generate(4, (_) => []);
-  final List<String?> _plantasPorMaceta = List.filled(4, null);
 
-  final FlutterLocalNotificationsPlugin _notifier =
-      FlutterLocalNotificationsPlugin();
-
-  bool _arduinoConectado = false;
-  bool _configuracionHabilitada = false;
-  bool _editable = false;
-  String _estadoConexion = "Desconectado";
-  Color _colorEstado = Colors.red;
-  bool _modoManual = false;
-  bool _modoInteligente = false;
-
-  String? _plantaSeleccionada;
-  List<String> _plantasDisponibles = [
-    'Fresa',
-    'Lechuga',
-    'Tomate',
-    'Pepino',
-    'Frijol',
-    'Agregar nueva...',
-  ];
-  final List<bool> _macetasSeleccionManual = List.filled(4, false);
-  final List<bool> _macetasRegando = List.filled(4, false);
+  final List<bool> macetasManualSeleccionadas = List.filled(4, false);
+  final List<bool> macetasRegando = List.filled(4, false);
 
   @override
   void initState() {
@@ -61,246 +39,189 @@ class _ConfiguracionArduinoPageState extends State<ConfiguracionArduinoPage> {
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     );
     _notifier.initialize(settings);
-    _cargarPlantasFirebase();
-    _cargarWifiGuardado();
     _verificarConexion();
   }
 
-  Future<void> _cargarPlantasFirebase() async {
-    final db = FirebaseDatabase.instance.ref();
-    final snapshot = await db.child('plantas').once();
-    final data = snapshot.snapshot.value;
-    if (data != null && data is Map && mounted) {
-      setState(() {
-        _plantasDisponibles = [...data.keys.cast<String>(), 'Agregar nueva...'];
-      });
-    }
-  }
-
-  Future<void> _guardarWifiLocal(String ssid, String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('wifi_ssid', ssid);
-    await prefs.setString('wifi_password', password);
-  }
-
-  Future<void> _cargarWifiGuardado() async {
-    final prefs = await SharedPreferences.getInstance();
-    final ssid = prefs.getString('wifi_ssid');
-    final password = prefs.getString('wifi_password');
-    if (ssid != null && password != null && mounted) {
-      ssidController.text = ssid;
-      passwordController.text = password;
-      setState(() {
-        _configuracionHabilitada = true;
-        _editable = true;
-      });
-    }
-  }
-
   Future<void> _verificarConexion() async {
-    final url = Uri.parse('http://154.12.246.223:8059/api/arduino/status');
+    final url = Uri.parse('https://154.12.246.223:8443/api/arduino/conectado');
     try {
       final response = await http.get(url);
-      final conectado = response.body.toLowerCase().contains("conectado");
+      final conectado =
+          response.statusCode == 200 && response.body.contains("conectado");
+      if (!mounted) return;
 
-      if (mounted) {
-        setState(() {
-          _estadoConexion = conectado ? "🟢 Conectado" : "🔴 Desconectado";
-          _colorEstado = conectado ? Colors.green : Colors.red;
-          _arduinoConectado = conectado;
-          _configuracionHabilitada = conectado;
-          _editable = conectado;
-        });
-
-        if (!conectado) {
-          _notifier.show(
-            0,
-            'Modo AP activado',
-            'El Arduino está en modo configuración. Conéctate a Invernadero-Config.',
-            NotificationDetails(
-              android: AndroidNotificationDetails(
-                'modo_ap',
-                'Modo AP',
-                importance: Importance.high,
-                priority: Priority.high,
-              ),
-            ),
-          );
-        }
-      }
+      setState(() {
+        _estadoConexion = conectado ? "🟢 Conectado" : "🔴 Desconectado";
+        _colorEstado = conectado ? Colors.green : Colors.red;
+        _arduinoDetectado = conectado;
+      });
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _estadoConexion = "🔴 Desconectado";
-          _colorEstado = Colors.red;
-          _arduinoConectado = false;
-          _configuracionHabilitada = false;
-          _editable = false;
-        });
-        await _notifier.show(
-          0,
-          'Error de conexión',
-          'No se pudo verificar la conexión con el Arduino.',
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'conexion_error',
-              'Error de Conexión',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      setState(() {
+        _estadoConexion = "🔴 Desconectado";
+        _colorEstado = Colors.red;
+        _arduinoDetectado = false;
+      });
     }
   }
 
-  void _mostrarDialogoWifi() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text("Conexión WiFi del Arduino"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: ssidController,
-                  onChanged: (_) => setState(() => _editable = false),
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre de la red WiFi (SSID)',
-                    prefixIcon: Icon(Icons.wifi),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  onChanged: (_) => setState(() => _editable = false),
-                  decoration: const InputDecoration(
-                    labelText: 'Contraseña WiFi',
-                    prefixIcon: Icon(Icons.lock),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cerrar"),
-              ),
-            ],
-          ),
-    );
+  void _abrirHistorialWifi() {
+    Navigator.pushNamed(context, '/historialwifi');
   }
 
-  Widget _buildMacetaFields(int index) {
-    return Container();
+  Future<void> _guardarConfiguracionEnFirebase() async {
+    if (!_arduinoDetectado) {
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        title: 'Arduino no conectado',
+        desc:
+            'No se puede guardar la configuración porque el Arduino no está conectado.',
+        btnOkOnPress: () {},
+      ).show();
+      return;
+    }
+
+    final db = FirebaseDatabase.instance.ref();
+    final ahora = DateTime.now();
+    final config = {
+      "fecha": ahora.toIso8601String(),
+      "modoManual": true,
+      "modoInteligente": false,
+      "macetas": List.generate(
+        4,
+        (i) => {
+          "min": int.tryParse(humedadMinSuelo[i].text) ?? 0,
+          "max": int.tryParse(humedadMaxSuelo[i].text) ?? 0,
+          "horarios": horarios[i].map((h) => h.format(context)).toList(),
+        },
+      ),
+    };
+
+    try {
+      await db.child("configuraciones").push().set(config);
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.success,
+        title: 'Éxito',
+        desc: 'Configuración guardada en Firebase.',
+        btnOkOnPress: () {},
+      ).show();
+    } catch (e) {
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.error,
+        title: 'Error',
+        desc: 'No se pudo guardar la configuración.',
+        btnOkOnPress: () {},
+      ).show();
+    }
+  }
+
+  Widget _buildMaceta(int index) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Maceta ${index + 1}"),
+        TextField(
+          controller: humedadMinSuelo[index],
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Humedad suelo mínima',
+            prefixIcon: Icon(Icons.water_drop_outlined),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: humedadMaxSuelo[index],
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Humedad suelo máxima',
+            prefixIcon: Icon(Icons.opacity),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...horarios[index].map((h) => Text("Horario: ${h.format(context)}")),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final picked = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.now(),
+            );
+            if (picked != null) {
+              setState(() {
+                horarios[index].add(picked);
+              });
+            }
+          },
+          icon: const Icon(Icons.access_time),
+          label: const Text("Agregar horario"),
+        ),
+        CheckboxListTile(
+          value: macetasManualSeleccionadas[index],
+          onChanged:
+              (val) => setState(
+                () => macetasManualSeleccionadas[index] = val ?? false,
+              ),
+          title: const Text("Seleccionar para riego manual"),
+        ),
+        if (macetasManualSeleccionadas[index])
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                macetasRegando[index] = !macetasRegando[index];
+              });
+            },
+            child: Text(
+              macetasRegando[index] ? "Detener riego" : "Iniciar riego",
+            ),
+          ),
+        const Divider(),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Configuración al Invernadero'),
+        title: Text('Configuración del Riego'),
         backgroundColor: Colors.green,
         actions: [
-          TextButton(
-            onPressed: _mostrarDialogoWifi,
-            child: Text(
-              "Conectarse con el Arduino",
-              style: TextStyle(color: Colors.white),
-            ),
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _verificarConexion,
+            tooltip: 'Refrescar estado',
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.green.shade100, Colors.lightBlue.shade100],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Estado: $_estadoConexion",
-                style: TextStyle(
-                  color: _colorEstado,
-                  fontWeight: FontWeight.bold,
-                ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Estado: $_estadoConexion",
+              style: TextStyle(
+                color: _colorEstado,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _plantaSeleccionada,
-                hint: const Text("Selecciona una planta"),
-                items:
-                    _plantasDisponibles
-                        .map(
-                          (planta) => DropdownMenuItem(
-                            value: planta,
-                            child: Text(planta),
-                          ),
-                        )
-                        .toList(),
-                onChanged: (value) {
-                  if (value == 'Agregar nueva...') {
-                    Navigator.pushNamed(context, '/plantasnew');
-                  } else {
-                    setState(() => _plantaSeleccionada = value);
-                  }
-                },
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: humedadMinDHT,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Humedad ambiental mínima (DHT11)',
-                  prefixIcon: Icon(Icons.water_drop),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: humedadMaxDHT,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Humedad ambiental máxima (DHT11)',
-                  prefixIcon: Icon(Icons.opacity),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const Divider(),
-              for (int i = 0; i < 4; i++) _buildMacetaFields(i),
-              SwitchListTile(
-                value: _modoManual,
-                onChanged: (val) => setState(() => _modoManual = val),
-                title: const Text("Modo manual de riego"),
-              ),
-              SwitchListTile(
-                value: _modoInteligente,
-                onChanged:
-                    _configuracionHabilitada
-                        ? (val) => setState(() => _modoInteligente = val)
-                        : null,
-                title: const Text("Modo inteligente de riego"),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _configuracionHabilitada ? () {} : null,
-                  child: const Text("Enviar configuración"),
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 20),
+            for (int i = 0; i < 4; i++) _buildMaceta(i),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _guardarConfiguracionEnFirebase,
+              child: const Text('Guardar configuración en arduino y firebase'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: _abrirHistorialWifi,
+              child: const Text('Agregar o cambiar red WiFi'),
+            ),
+          ],
         ),
       ),
     );

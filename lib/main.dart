@@ -11,6 +11,7 @@ import 'manuales.dart';
 import 'configuracion_arduino.dart';
 import 'registro.dart';
 import 'tabla_sensores.dart';
+import 'historialwifi.dart';
 
 final FlutterLocalNotificationsPlugin notificaciones =
     FlutterLocalNotificationsPlugin();
@@ -70,6 +71,7 @@ class MyApp extends StatelessWidget {
         '/registro': (context) => const RegistroPage(),
         '/tabla_sensores': (context) => const TablaSensoresPage(),
         // '/plantasnew': (context) => const PlantasNewPage(),
+        '/historialwifi': (context) => const HistorialWifiPage(),
       },
     );
   }
