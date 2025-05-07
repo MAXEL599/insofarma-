@@ -11,10 +11,10 @@ class HistorialWifiPage extends StatefulWidget {
 
 class _HistorialWifiPageState extends State<HistorialWifiPage> {
   final DatabaseReference _wifiRef = FirebaseDatabase.instance.ref().child(
-    'historial_wifi',
+    'configuracionWifi',
   );
-  List<Map<String, String>> _redes = [];
 
+  List<Map<String, String>> _redes = [];
   final TextEditingController _ssidController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -29,15 +29,18 @@ class _HistorialWifiPageState extends State<HistorialWifiPage> {
     if (snapshot.exists) {
       final data = Map<String, dynamic>.from(snapshot.value as Map);
       final nuevasRedes =
-          data.entries.map((entry) {
-            final v = Map<String, dynamic>.from(entry.value);
+          data.entries.where((entry) => entry.value is Map).map((entry) {
+            final v = Map<String, dynamic>.from(entry.value as Map);
             return {
               'id': entry.key,
-              'ssid': v['ssid']?.toString() ?? '',
+              'ssid': v['SSID']?.toString() ?? '',
               'password': v['password']?.toString() ?? '',
             };
           }).toList();
+
       setState(() => _redes = nuevasRedes);
+    } else {
+      setState(() => _redes = []);
     }
   }
 
@@ -49,14 +52,14 @@ class _HistorialWifiPageState extends State<HistorialWifiPage> {
       AwesomeDialog(
         context: context,
         dialogType: DialogType.warning,
-        title: 'Advertencia',
+        title: 'Datos inválidos',
         desc:
             'El SSID no puede estar vacío y la contraseña debe tener al menos 8 caracteres.',
       ).show();
       return;
     }
 
-    final nuevaRed = {'ssid': ssid, 'password': password};
+    final nuevaRed = {'SSID': ssid, 'password': password};
     _wifiRef.push().set(nuevaRed).then((_) {
       _ssidController.clear();
       _passwordController.clear();
@@ -64,8 +67,32 @@ class _HistorialWifiPageState extends State<HistorialWifiPage> {
     });
   }
 
+  void _conectarRed(String ssid, String password) {
+    AwesomeDialog(
+      context: context,
+      dialogType: DialogType.info,
+      title: 'Conectando...',
+      desc: 'Conectando a la red $ssid',
+      btnOkOnPress: () {
+        print('✅ Conectado a $ssid con contraseña $password');
+        // Aquí iría la llamada a Spring Boot con HTTP POST si lo deseas implementar
+      },
+    ).show();
+  }
+
   void _eliminarRed(String id) {
-    _wifiRef.child(id).remove().then((_) => _cargarRedes());
+    AwesomeDialog(
+      context: context,
+      dialogType: DialogType.warning,
+      title: '¿Estás seguro?',
+      desc: '¿Deseas eliminar esta red WiFi?',
+      btnCancelText: "No",
+      btnOkText: "Sí",
+      btnCancelOnPress: () {},
+      btnOkOnPress: () {
+        _wifiRef.child(id).remove().then((_) => _cargarRedes());
+      },
+    ).show();
   }
 
   @override
@@ -93,9 +120,38 @@ class _HistorialWifiPageState extends State<HistorialWifiPage> {
               ),
             ),
             const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _guardarRed,
-              child: const Text('Guardar configuración en arduino y firebase'),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.save),
+                    label: const Text('Guardar red'),
+                    onPressed: _guardarRed,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.wifi),
+                    label: const Text('Conectar red'),
+                    onPressed: () {
+                      final ssid = _ssidController.text.trim();
+                      final password = _passwordController.text.trim();
+                      if (ssid.isNotEmpty && password.length >= 8) {
+                        _conectarRed(ssid, password);
+                      } else {
+                        AwesomeDialog(
+                          context: context,
+                          dialogType: DialogType.warning,
+                          title: 'Datos inválidos',
+                          desc:
+                              'Debes ingresar SSID y contraseña válida (mín. 8 caracteres).',
+                        ).show();
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
             const Divider(height: 30),
             const Text(
@@ -103,22 +159,30 @@ class _HistorialWifiPageState extends State<HistorialWifiPage> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             Expanded(
-              child: ListView.builder(
-                itemCount: _redes.length,
-                itemBuilder: (context, index) {
-                  final red = _redes[index];
-                  return Card(
-                    child: ListTile(
-                      title: Text(red['ssid'] ?? ''),
-                      subtitle: Text('Contraseña: ${red['password'] ?? ''}'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _eliminarRed(red['id']!),
+              child:
+                  _redes.isEmpty
+                      ? const Center(child: Text("No hay redes guardadas"))
+                      : ListView.builder(
+                        itemCount: _redes.length,
+                        itemBuilder: (context, index) {
+                          final red = _redes[index];
+                          return Card(
+                            child: ListTile(
+                              title: Text(red['ssid'] ?? ''),
+                              subtitle: Text(
+                                'Contraseña: ${red['password'] ?? ''}',
+                              ),
+                              onTap:
+                                  () => _conectarRed(
+                                    red['ssid']!,
+                                    red['password']!,
+                                  ),
+                              onLongPress: () => _eliminarRed(red['id']!),
+                              trailing: const Icon(Icons.touch_app),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
